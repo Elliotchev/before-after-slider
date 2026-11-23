@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Before / After Slider</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@400&display=swap">
+<style>
+  /* Layout: one stage that fits the frame; editor controls sit under it only when no images are set in the URL. */
+  :root {
+    --ink: #1d1c1a;
+    --muted: #77736c;
+    --line: #ffffff;
+    --pill-bg: rgba(255, 255, 255, 0.94);
+    --panel: #f3f2ef;
+    --border: #e3e1dc;
+    --accent: #2a1416;
+    --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --radius: 12px;
+    --ar: 16 / 10;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink: #ecebe8; --muted: #9b978f; --panel: #252422; --border: #34322f; --accent: #ecebe8; color-scheme: dark; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: transparent; color: var(--ink); font: 14px/1.4 var(--sans); -webkit-font-smoothing: antialiased; }
+
+  .wrap { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 8px; }
+  body.editing .wrap { justify-content: flex-start; padding: 24px max(16px, env(safe-area-inset-left)); }
+
+  /* Stage */
+  .stage {
+    position: relative; overflow: hidden; border-radius: var(--radius);
+    aspect-ratio: var(--ar); width: min(100%, calc((100vh - 16px) * (var(--ar))));
+    max-width: 100%; cursor: ew-resize; touch-action: pan-y; user-select: none; -webkit-user-select: none;
+    background: var(--panel); outline: none;
+  }
+  body.editing .stage { width: min(100%, 1100px, calc((100vh - 220px) * (var(--ar)))); min-width: min(100%, 320px); }
+  .stage:focus-visible { box-shadow: 0 0 0 3px rgba(80,120,255,.5); }
+  .stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; -webkit-user-drag: none; }
+  .stage .a { clip-path: inset(0 calc(100% - var(--pos, 50%)) 0 0); z-index: 1; }
+
+  .divider { position: absolute; top: 0; bottom: 0; left: var(--pos, 50%); width: 2px; margin-left: -1px; background: var(--line); z-index: 2; pointer-events: none; box-shadow: 0 0 0 1px rgba(0,0,0,.09), 0 0 12px rgba(0,0,0,.06); }
+  .handle {
+    position: absolute; top: 50%; left: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%;
+    background: #fff; color: #1d1c1a; display: grid; place-items: center; box-shadow: 0 4px 18px rgba(0,0,0,.14);
+    transition: transform .2s ease;
+  }
+  .stage.dragging .handle { transform: scale(.92); }
+  .handle svg { width: 18px; height: 18px; }
+
+  .stage.easing .a, .stage.easing .divider { transition: clip-path .45s cubic-bezier(.2,.7,.2,1), left .45s cubic-bezier(.2,.7,.2,1); }
+
+  .label {
+    position: absolute; top: 14px; z-index: 3; padding: 7px 14px; border-radius: 999px;
+    background: var(--pill-bg); color: #1d1c1a; font-weight: 500; font-size: 14px; line-height: 1.2;
+    box-shadow: 0 2px 14px rgba(0,0,0,.08); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    max-width: 42%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; outline: none; transition: opacity .2s;
+  }
+  .label.left { left: 14px; }
+  .label.right { right: 14px; }
+  .label:empty { display: none; }
+  body.editing .label { cursor: text; pointer-events: auto; }
+  body.editing .label:empty { display: block; min-width: 40px; }
+  .label:focus { box-shadow: 0 0 0 2px rgba(80,120,255,.6); text-overflow: clip; }
+  .stage[data-side="a"] .label.right, .stage[data-side="b"] .label.left { opacity: .55; }
+
+  .drop-hint { position: absolute; inset: 0; z-index: 4; display: none; grid-template-columns: 1fr 1fr; pointer-events: none; }
+  .drop-hint div { display: grid; place-items: center; color: #fff; font-weight: 500; background: rgba(20,20,20,.35); border: 2px dashed rgba(255,255,255,.8); margin: 8px; border-radius: 10px; }
+  .drop-hint div.over { background: rgba(20,20,20,.6); }
+  .stage.dropping .drop-hint { display: grid; }
+
+  @media (max-width: 480px) { .label { font-size: 12px; padding: 5px 10px; top: 10px; } .label.left { left: 10px; } .label.right { right: 10px; } .handle { width: 36px; height: 36px; margin: -18px 0 0 -18px; } }
+  @media (prefers-reduced-motion: reduce) { .stage.easing .a, .stage.easing .divider, .handle { transition: none; } }
+
+  /* Editor */
+  .editor { width: min(100%, 1100px); display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .slot { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; display: grid; gap: 8px; min-width: 0; }
+  .slot h2 { margin: 0; font-size: 12px; font-weight: 500; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+  .row { display: flex; gap: 8px; min-width: 0; }
+  .row input[type=text] { flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 7px 10px; border-radius: 7px; border: 1px solid var(--border); background: transparent; color: var(--ink); }
+  .btn { font: inherit; font-size: 13px; font-weight: 500; padding: 7px 12px; border-radius: 7px; border: 1px solid var(--border); background: transparent; color: var(--ink); cursor: pointer; white-space: nowrap; }
+  .btn:hover { background: rgba(127,127,127,.08); }
+  .btn.primary { background: var(--accent); color: var(--panel); border-color: var(--accent); }
+  .btn.primary:disabled { opacity: .4; cursor: not-allowed; }
+  .btn:focus-visible, input:focus-visible { outline: 2px solid rgba(80,120,255,.6); outline-offset: 1px; }
+  .src { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .footer { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between; }
+  .note { color: var(--muted); font-size: 12.5px; max-width: 62ch; }
+  .note code { font-family: var(--mono); font-size: 11.5px; }
+  @media (max-width: 640px) { .editor { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="stage" id="stage" tabindex="0" role="slider" aria-label="Comparison slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+    <img class="b" id="imgB" alt="">
+    <img class="a" id="imgA" alt="">
+    <div class="divider"><div class="handle" aria-hidden="true">
+      <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5 3 9l4 4M11 5l4 4-4 4"/></svg>
+    </div></div>
+    <div class="label left" id="labelA" spellcheck="false"></div>
+    <div class="label right" id="labelB" spellcheck="false"></div>
+    <div class="drop-hint"><div data-k="a">Drop as left image</div><div data-k="b">Drop as right image</div></div>
+  </div>
+
+  <div class="editor" id="editor" hidden>
+    <div class="slot">
+      <h2>Left image</h2>
+      <div class="row">
+        <input type="text" id="urlA" placeholder="Paste image URL">
+        <button class="btn" data-upload="a">Upload</button>
+      </div>
+      <div class="src" id="srcA"></div>
+    </div>
+    <div class="slot">
+      <h2>Right image</h2>
+      <div class="row">
+        <input type="text" id="urlB" placeholder="Paste image URL">
+        <button class="btn" data-upload="b">Upload</button>
+      </div>
+      <div class="src" id="srcB"></div>
+    </div>
+    <div class="footer">
+      <p class="note" id="note">Click a label to rename it. Drop or paste images onto the slider to swap them.</p>
+      <div class="row">
+        <button class="btn" id="swap">Swap</button>
+        <button class="btn primary" id="copy">Copy embed link</button>
+      </div>
+    </div>
+    <input type="file" id="file" accept="image/*" hidden>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const stage = $('stage'), imgA = $('imgA'), imgB = $('imgB'), labelA = $('labelA'), labelB = $('labelB');
+  const params = new URLSearchParams(location.search);
+  const viewMode = params.has('a') && params.has('b');
+  const STORE = 'ba-slider-v1';
+
+  const load = () => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; } };
+  const save = () => { if (viewMode) return; try { localStorage.setItem(STORE, JSON.stringify(state)); } catch { /* quota: uploads stay for this visit only */ } };
+
+  /* Sample screens so the editor opens in a working state */
+  function sample(after) {
+    const c = document.createElement('canvas'); c.width = 1600; c.height = 1000;
+    const g = c.getContext('2d');
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, 1600, 1000);
+    const bar = (x, y, w, h, col, r = 8) => { g.fillStyle = col; g.beginPath(); g.roundRect(x, y, w, h, r); g.fill(); };
+    g.font = '500 34px Inter, system-ui, sans-serif'; g.fillStyle = '#1d1c1a';
+    g.fillText('Hello, I’m Sam.', 130, 230);
+    g.font = '400 30px Inter, system-ui, sans-serif'; g.fillStyle = '#8a867f';
+    g.fillText('I design and build apps.', 130, 278);
+    if (!after) {
+      bar(0, 0, 1600, 90, '#f4f3f1', 0);
+      ['Work', 'About', 'Writing', 'Talks', 'Contact'].forEach((t, i) => { g.font = '400 24px Inter, sans-serif'; g.fillStyle = '#55514b'; g.fillText(t, 820 + i * 140, 55); });
+      bar(130, 820, 170, 64, '#2a1416', 12); bar(320, 820, 200, 64, '#eceae6', 12);
+      g.fillStyle = '#fff'; g.font = '500 24px Inter, sans-serif'; g.fillText('Contact', 172, 861);
+      g.fillStyle = '#2a1416'; g.fillText('See the work', 350, 861);
+      bar(130, 640, 560, 22, '#e7e5e1'); bar(130, 680, 480, 22, '#e7e5e1'); bar(130, 720, 520, 22, '#e7e5e1');
+    } else {
+      bar(640, 30, 320, 52, '#f2f1ee', 26);
+      g.font = '500 22px Inter, sans-serif'; g.fillStyle = '#1d1c1a'; g.fillText('Sam Rivera', 735, 64);
+      [['Years leading design', '12+'], ['Apps launched', '07'], ['Talks given', '09']].forEach(([k, v], i) => {
+        g.font = '400 24px Inter, sans-serif'; g.fillStyle = '#8a867f'; g.fillText(k, 1110, 760 + i * 52);
+        g.fillStyle = '#1d1c1a'; g.textAlign = 'right'; g.fillText(v, 1470, 760 + i * 52); g.textAlign = 'left';
+      });
+      bar(130, 820, 170, 64, '#2a1416', 12);
+      g.fillStyle = '#fff'; g.font = '500 24px Inter, sans-serif'; g.fillText('Contact', 172, 861);
+    }
+    const grd = g.createLinearGradient(650, 380, 950, 700);
+    grd.addColorStop(0, after ? '#d9dde6' : '#ece9e4'); grd.addColorStop(1, after ? '#5b6170' : '#b9b4ab');
+    g.fillStyle = grd; g.beginPath(); g.arc(800, 520, 150, 0, Math.PI * 2); g.fill();
+    return c.toDataURL('image/png');
+  }
+
+  const saved = viewMode ? {} : load();
+  const state = viewMode
+    ? { a: params.get('a'), b: params.get('b'), la: params.get('la') ?? 'Before', lb: params.get('lb') ?? 'After' }
+    : { a: saved.a || '', b: saved.b || '', la: saved.la ?? 'Before', lb: saved.lb ?? 'After' };
+
+  function render() {
+    imgA.src = state.a || sample(false);
+    imgB.src = state.b || sample(true);
+    imgA.alt = state.la || 'Left image'; imgB.alt = state.lb || 'Right image';
+    if (document.activeElement !== labelA) labelA.textContent = state.la;
+    if (document.activeElement !== labelB) labelB.textContent = state.lb;
+    if (!viewMode) {
+      const desc = (v, def) => !v ? def : v.startsWith('data:') ? 'Uploaded file (this browser only)' : v;
+      $('srcA').textContent = desc(state.a, 'Sample image'); $('srcB').textContent = desc(state.b, 'Sample image');
+      $('urlA').value = state.a && !state.a.startsWith('data:') ? state.a : '';
+      $('urlB').value = state.b && !state.b.startsWith('data:') ? state.b : '';
+      const uploads = [state.a, state.b].some(v => v && v.startsWith('data:'));
+      const missing = !state.a || !state.b;
+      $('copy').disabled = uploads || missing;
+      $('note').innerHTML = uploads
+        ? 'Uploaded images only live in this browser, so they can’t go into an embed. Host the images (for example next to this file) and paste their URLs.'
+        : missing
+          ? 'Add both image URLs to get an embed link. Click a label to rename it; drop or paste images onto the slider to preview.'
+          : 'Ready. Paste the link into Notion with <code>/embed</code>.';
+    }
+  }
+  imgA.onload = () => { if (imgA.naturalWidth) stage.style.setProperty('--ar', imgA.naturalWidth + ' / ' + imgA.naturalHeight); };
+
+  /* Slider */
+  let pos = 50;
+  function setPos(p, ease) {
+    pos = Math.max(0, Math.min(100, p));
+    stage.classList.toggle('easing', !!ease);
+    stage.style.setProperty('--pos', pos + '%');
+    stage.setAttribute('aria-valuenow', Math.round(pos));
+    stage.dataset.side = pos > 85 ? 'a' : pos < 15 ? 'b' : '';
+  }
+  const fromEvent = e => { const r = stage.getBoundingClientRect(); return ((e.clientX - r.left) / r.width) * 100; };
+  let dragging = false;
+  stage.addEventListener('pointermove', e => {
+    if (e.pointerType === 'mouse' || dragging) setPos(fromEvent(e));
+  });
+  stage.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') setPos(fromEvent(e), true); setTimeout(() => stage.classList.remove('easing'), 450); });
+  stage.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse' && !dragging) setPos(50, true); });
+  stage.addEventListener('pointerdown', e => {
+    if (e.target.closest('.label') && !viewMode) return;
+    if (e.pointerType !== 'mouse') { dragging = true; stage.classList.add('dragging'); stage.setPointerCapture(e.pointerId); setPos(fromEvent(e), true); }
+  });
+  const end = () => { dragging = false; stage.classList.remove('dragging'); };
+  stage.addEventListener('pointerup', end); stage.addEventListener('pointercancel', end);
+  stage.addEventListener('keydown', e => {
+    if (e.target !== stage) return;
+    const step = e.shiftKey ? 10 : 2;
+    if (e.key === 'ArrowLeft') { setPos(pos - step, true); e.preventDefault(); }
+    if (e.key === 'ArrowRight') { setPos(pos + step, true); e.preventDefault(); }
+    if (e.key === 'Home') setPos(0, true);
+    if (e.key === 'End') setPos(100, true);
+  });
+  setPos(50);
+
+  if (viewMode) { render(); return; }
+
+  /* Editor */
+  document.body.classList.add('editing');
+  $('editor').hidden = false;
+  [labelA, labelB].forEach((el, i) => {
+    el.contentEditable = 'plaintext-only';
+    if (el.contentEditable !== 'plaintext-only') el.contentEditable = 'true';
+    el.addEventListener('input', () => { state[i ? 'lb' : 'la'] = el.textContent.trim(); imgA.alt = state.la; imgB.alt = state.lb; save(); render(); });
+    el.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); el.blur(); } });
+    el.addEventListener('blur', render);
+  });
+
+  const setImg = (k, v) => { state[k] = v; save(); render(); };
+  const readFile = (file, k) => {
+    if (!file || !file.type.startsWith('image/')) return;
+    const r = new FileReader(); r.onload = () => setImg(k, r.result); r.readAsDataURL(file);
+  };
+
+  let target = 'a';
+  document.querySelectorAll('[data-upload]').forEach(b => b.onclick = () => { target = b.dataset.upload; $('file').click(); });
+  $('file').onchange = e => { readFile(e.target.files[0], target); e.target.value = ''; };
+  [['urlA', 'a'], ['urlB', 'b']].forEach(([id, k]) => {
+    $(id).addEventListener('change', e => setImg(k, e.target.value.trim()));
+  });
+  $('swap').onclick = () => { [state.a, state.b, state.la, state.lb] = [state.b, state.a, state.lb, state.la]; save(); render(); };
+
+  // Drag and drop onto either half
+  let depth = 0;
+  const half = e => (fromEvent(e) < 50 ? 'a' : 'b');
+  stage.addEventListener('dragenter', e => { e.preventDefault(); depth++; stage.classList.add('dropping'); });
+  stage.addEventListener('dragleave', () => { if (--depth <= 0) { depth = 0; stage.classList.remove('dropping'); } });
+  stage.addEventListener('dragover', e => {
+    e.preventDefault(); const k = half(e);
+    stage.querySelectorAll('.drop-hint div').forEach(d => d.classList.toggle('over', d.dataset.k === k));
+  });
+  stage.addEventListener('drop', e => {
+    e.preventDefault(); depth = 0; stage.classList.remove('dropping');
+    readFile(e.dataTransfer.files[0], half(e));
+  });
+  // Paste fills whichever side has the cursor
+  document.addEventListener('paste', e => {
+    if (e.target.closest && e.target.closest('input, .label')) return;
+    const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+    if (item) readFile(item.getAsFile(), pos >= 50 ? 'a' : 'b');
+  });
+
+  $('copy').onclick = async () => {
+    const base = location.href.split(/[?#]/)[0];
+    const q = new URLSearchParams({ a: state.a, b: state.b, la: state.la, lb: state.lb });
+    const link = base + '?' + q.toString();
+    const btn = $('copy');
+    try { await navigator.clipboard.writeText(link); btn.textContent = 'Copied'; }
+    catch { $('note').textContent = link; btn.textContent = 'Copy the link above'; }
+    setTimeout(() => (btn.textContent = 'Copy embed link'), 1800);
+  };
+
+  render();
+})();
+</script>
+</body>
+</html>
