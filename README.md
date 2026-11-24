@@ -20,7 +20,7 @@ A small image comparison slider for embedding in Notion case studies. A line fol
 
 3. In Notion, type `/embed` and paste the link.
 
-Opening the page without `a` and `b` shows the editor, where you can preview images, rename labels and copy a link.
+The page only ever shows the slider. To open the editor (preview images, rename labels, copy a link), add `#edit` to the end of any link, e.g. `https://elliotchev.github.io/before-after-slider/#edit`. Embeds never include `#edit`, so viewers never see the controls.
 
 ## Images that always load
 

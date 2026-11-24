@@ -142,7 +142,9 @@
   const $ = id => document.getElementById(id);
   const stage = $('stage'), imgA = $('imgA'), imgB = $('imgB'), labelA = $('labelA'), labelB = $('labelB');
   const params = new URLSearchParams(location.search);
-  const viewMode = params.has('a') && params.has('b');
+  // Slider only, unless the link ends in #edit. Embeds can never show the editor.
+  const viewMode = location.hash !== '#edit';
+  addEventListener('hashchange', () => location.reload());
   const STORE = 'ba-slider-v1';
 
   const load = () => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; } };
@@ -181,9 +183,11 @@
     return c.toDataURL('image/png');
   }
 
-  const saved = viewMode ? {} : load();
-  const state = viewMode
-    ? { a: params.get('a'), b: params.get('b'), la: params.get('la') ?? 'Before', lb: params.get('lb') ?? 'After' }
+  // Opening the editor from an embed link (…?a=…&b=…#edit) starts from that link's images and labels
+  const fromLink = params.has('a') || params.has('b');
+  const saved = viewMode || fromLink ? {} : load();
+  const state = viewMode || fromLink
+    ? { a: params.get('a') || '', b: params.get('b') || '', la: params.get('la') ?? 'Before', lb: params.get('lb') ?? 'After' }
     : { a: saved.a || '', b: saved.b || '', la: saved.la ?? 'Before', lb: saved.lb ?? 'After' };
 
   function render() {
