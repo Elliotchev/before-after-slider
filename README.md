@@ -17,6 +17,7 @@ A small image comparison slider for embedding in Notion case studies. A line fol
    | `b`   | Right image |
    | `la`  | Left label (default "Before"; leave empty to hide) |
    | `lb`  | Right label (default "After") |
+| `bg`  | Background around the screens (default white), e.g. `bg=f7f6f3` or `bg=transparent` |
 
 3. In Notion, type `/embed` and paste the link.
 
